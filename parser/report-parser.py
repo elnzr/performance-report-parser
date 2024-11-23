@@ -53,6 +53,44 @@ def show_visa_types_plot(df):
     plt.show()
 
 
+def show_employers_cnt_per_city(df: DataFrame):
+    transformed_df = (
+        df.filter(df.CASE_STATUS == 'Certified')
+            .filter(
+                (F.lower(df.JOB_TITLE).like('%software engineer%')
+                 | F.lower(df.JOB_TITLE).like('%data engineer%')
+                 | F.lower(df.JOB_TITLE).like('%software developer%'))
+                |
+                (F.lower(df.SPECIFIC_SKILLS).like('%spark%'))
+                |
+                (F.lower(df.PW_SOC_TITLE).like('%data%')
+                 | F.lower(df.PW_SOC_TITLE).like('%software developer%')
+                 | F.lower(df.PW_SOC_TITLE).like('%software engineer%'))
+                |
+                (F.lower(df.ACCEPT_ALT_JOB_TITLE).like('%data%')
+                 | F.lower(df.ACCEPT_ALT_JOB_TITLE).like('%software developer%')
+                 | F.lower(df.ACCEPT_ALT_JOB_TITLE).like('%software engineer%'))
+            )
+    )
+    companies_per_city_df = (
+        transformed_df.groupBy(F.lower(df.WORKSITE_CITY).alias('city'))
+            .agg(F.countDistinct(df.EMPLOYER_NAME).alias("employers_cnt"))
+            .orderBy(F.col('employers_cnt').desc())
+    )
+    print(f"Found {companies_per_city_df.count()} cities")
+    companies_per_city_df.limit(50).show(55, truncate=False)
+
+    res_pd = companies_per_city_df.limit(20).toPandas()
+    labels = res_pd['city']
+    sizes = res_pd['employers_cnt']
+
+    fig, ax = plt.subplots()
+    ax.pie(sizes, labels=labels)
+    ax.set_title('Top 20 cities with the greatest employers count')
+    plt.legend(labels[:20], bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0)
+    plt.show()
+
+
 def show_software_companies_with_max_cases_cnt_and_wage(df: DataFrame):
     # (
     #     df.filter(F.col('COUNTRY_OF_CITIZENSHIP').startswith("RUSSIA"))
@@ -124,7 +162,8 @@ def main():
     spark = init_spark_session()
     df = parse_report(spark, csv_report_name)
     show_software_companies_with_max_cases_cnt_and_wage(df)
-    show_visa_types_plot(df)
+    # show_visa_types_plot(df)
+    show_employers_cnt_per_city(df)
 
 
 if __name__ == "__main__":
