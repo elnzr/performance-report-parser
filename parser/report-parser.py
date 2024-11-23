@@ -80,14 +80,38 @@ def show_employers_cnt_per_city(df: DataFrame):
     print(f"Found {companies_per_city_df.count()} cities")
     companies_per_city_df.limit(50).show(55, truncate=False)
 
-    res_pd = companies_per_city_df.limit(20).toPandas()
+    res_pd = companies_per_city_df.limit(15).toPandas()
     labels = res_pd['city']
-    sizes = res_pd['employers_cnt']
+    values = res_pd['employers_cnt']
 
-    fig, ax = plt.subplots()
-    ax.pie(sizes, labels=labels)
-    ax.set_title('Top 20 cities with the greatest employers count')
-    plt.legend(labels[:20], bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0)
+    fig, ax = plt.subplots(figsize=(16, 9))
+    ax.barh(labels, values, color='lawngreen')
+
+    # Show top values
+    ax.invert_yaxis()
+
+    # Remove x, y Ticks
+    ax.xaxis.set_ticks_position('none')
+    ax.yaxis.set_ticks_position('none')
+
+    # Add padding between axes and labels
+    ax.xaxis.set_tick_params(pad=5)
+    ax.yaxis.set_tick_params(pad=10)
+
+    # Add x, y gridlines
+    ax.grid(b=True, color='grey',
+            linestyle='-.', linewidth=0.5,
+            alpha=0.2)
+
+    # Add annotation to bars
+    for i in ax.patches:
+        plt.text(i.get_width() + 0.2, i.get_y() + 0.5,
+                 str(round((i.get_width()), 2)),
+                 fontsize=10, fontweight='bold', color='grey')
+
+    plt.xlabel("No. of employers")
+    plt.ylabel("Cities")
+    plt.title("Top 15 cities with the greatest employers count")
     plt.show()
 
 
