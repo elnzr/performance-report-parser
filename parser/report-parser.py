@@ -26,7 +26,7 @@ def parse_report(spark, csv_report_path) -> DataFrame:
     return df
 
 
-def show_visa_types_plot(df, ax):
+def show_visa_types(df, ax):
     # df.filter(F.col("CLASS_OF_ADMISSION").startswith('EB'))
 
     # df.filter(F.col("CLASS_OF_ADMISSION") != 'H-1B')
@@ -111,7 +111,7 @@ def show_employers_cnt_per_city(df: DataFrame, ax):
     ax.title.set_text("Top 15 cities with the greatest employers count")
 
 
-def show_software_companies_with_max_cases_cnt_and_wage(df: DataFrame):
+def show_software_companies_with_max_cases_cnt_and_wage(df: DataFrame, ax_cases, ax_wage):
     # (
     #     df.filter(F.col('COUNTRY_OF_CITIZENSHIP').startswith("RUSSIA"))
     #         .filter(df.JOB_TITLE.like('Data Engineer'))
@@ -160,6 +160,24 @@ def show_software_companies_with_max_cases_cnt_and_wage(df: DataFrame):
     print(f"Found {companies_ordered_df.count()} employers")
     companies_ordered_df.limit(50).show(50, truncate=False)
 
+    companies_df = companies_ordered_df.limit(15)
+
+    pd_df = companies_df.toPandas()
+    pd_df['max_wage'] = pd_df['max_wage'].astype(float)
+
+    pd_df[["EMPLOYER_NAME", "cases_cnt"]].plot(x="EMPLOYER_NAME", kind="barh", ax=ax_cases, fontsize=6)
+    pd_df[["EMPLOYER_NAME", "max_wage"]].plot(x="EMPLOYER_NAME", kind="barh", ax=ax_wage, fontsize=6)
+
+    ax_cases.set_xlabel('Cases count')
+    ax_cases.set_ylabel('Company')
+    ax_cases.set_title("Top 15 companies with the greatest cases count")
+    ax_cases.get_legend().set_visible(False)
+
+    ax_wage.set_xlabel('Wage')
+    ax_wage.set_ylabel('Company')
+    ax_wage.set_title("Wage in the companies with highest cases count")
+    ax_wage.get_legend().set_visible(False)
+
 
 def init_spark_session():
     spark = SparkSession \
@@ -183,11 +201,11 @@ def main():
     df = parse_report(spark, csv_report_name)
 
     fig, axis = plt.subplots(2, 2)
-    # show_software_companies_with_max_cases_cnt_and_wage(df)
-    show_visa_types_plot(df, axis[0, 0])
+    show_software_companies_with_max_cases_cnt_and_wage(df, axis[1, 0], axis[1, 1])
+    show_visa_types(df, axis[0, 0])
     show_employers_cnt_per_city(df, axis[0, 1])
 
-    fig.subplots_adjust(hspace=0.1, wspace=0.5)
+    plt.subplots_adjust(left=0.17, right=0.97, top=0.9, bottom=0.06, hspace=0.56, wspace=0.53)
     plt.show()
 
 
