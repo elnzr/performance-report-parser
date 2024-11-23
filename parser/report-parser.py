@@ -26,7 +26,7 @@ def parse_report(spark, csv_report_path) -> DataFrame:
     return df
 
 
-def show_visa_types_plot(df):
+def show_visa_types_plot(df, ax):
     # df.filter(F.col("CLASS_OF_ADMISSION").startswith('EB'))
 
     # df.filter(F.col("CLASS_OF_ADMISSION") != 'H-1B')
@@ -34,26 +34,24 @@ def show_visa_types_plot(df):
     #    .filter(F.col("CLASS_OF_ADMISSION") != "Not in USA")
     #    .filter(F.col("CLASS_OF_ADMISSION") != "L-1")
 
-    res = (
+    res_df = (
         df.groupBy(F.col("CLASS_OF_ADMISSION"))
           .agg(F.countDistinct(F.col("CASE_NUMBER")))
           .orderBy(F.col("count(CASE_NUMBER)").desc())
+          .limit(15)
     )
-    res.show(truncate=False)
+    res_df.show(truncate=False)
 
-    res_pd = res.toPandas()
+    res_pd = res_df.toPandas()
     labels = res_pd['CLASS_OF_ADMISSION']
     sizes = res_pd['count(CASE_NUMBER)']
 
-    fig, ax = plt.subplots()
-    fig.canvas.manager.set_window_title('Some chart')
     ax.pie(sizes, labels=labels)
     ax.set_title('Rows count per visa type')
-    plt.legend(labels[:20], bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0)
-    plt.show()
+    ax.legend(labels[:15], bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0)
 
 
-def show_employers_cnt_per_city(df: DataFrame):
+def show_employers_cnt_per_city(df: DataFrame, ax):
     transformed_df = (
         df.filter(df.CASE_STATUS == 'Certified')
             .filter(
@@ -84,7 +82,6 @@ def show_employers_cnt_per_city(df: DataFrame):
     labels = res_pd['city']
     values = res_pd['employers_cnt']
 
-    fig, ax = plt.subplots(figsize=(16, 9))
     ax.barh(labels, values, color='lawngreen')
 
     # Show top values
@@ -105,14 +102,13 @@ def show_employers_cnt_per_city(df: DataFrame):
 
     # Add annotation to bars
     for i in ax.patches:
-        plt.text(i.get_width() + 0.2, i.get_y() + 0.5,
+        ax.text(i.get_width() + 0.2, i.get_y() + 0.5,
                  str(round((i.get_width()), 2)),
                  fontsize=10, fontweight='bold', color='grey')
 
-    plt.xlabel("No. of employers")
-    plt.ylabel("Cities")
-    plt.title("Top 15 cities with the greatest employers count")
-    plt.show()
+    ax.set_xlabel('No. of employers')
+    ax.set_ylabel('Cities')
+    ax.title.set_text("Top 15 cities with the greatest employers count")
 
 
 def show_software_companies_with_max_cases_cnt_and_wage(df: DataFrame):
@@ -185,9 +181,14 @@ def main():
 
     spark = init_spark_session()
     df = parse_report(spark, csv_report_name)
-    show_software_companies_with_max_cases_cnt_and_wage(df)
-    # show_visa_types_plot(df)
-    show_employers_cnt_per_city(df)
+
+    fig, axis = plt.subplots(2, 2)
+    # show_software_companies_with_max_cases_cnt_and_wage(df)
+    show_visa_types_plot(df, axis[0, 0])
+    show_employers_cnt_per_city(df, axis[0, 1])
+
+    fig.subplots_adjust(hspace=0.1, wspace=0.5)
+    plt.show()
 
 
 if __name__ == "__main__":
