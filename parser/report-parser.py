@@ -189,8 +189,11 @@ def init_spark_session():
 
 
 def main():
-    xlsx_report_path = os.environ['xlsx_report_path']
-    csv_report_name = 'perf-report.csv'
+    xlsx_report_path = os.environ.get('xlsx_report_path', None)
+    if not xlsx_report_path:
+        raise ValueError(f"Path to the input xlsx report not set! Set it in env var: 'xlsx_report_path'")
+
+    csv_report_name = 'performance-report.csv'
     if not os.path.isfile(csv_report_name):
         print('Csv report not found, run xlsx -> csv transformation')
         transform_xlsx_to_csv(xlsx_report_path, csv_report_name)
