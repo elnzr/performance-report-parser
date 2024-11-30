@@ -30,6 +30,12 @@ def parse_report(spark, csv_report_path) -> DataFrame:
     return df
 
 
+def contains_any(c: Column, values: List[str]):
+    lower_values = [c.like(f'%{j.lower()}%') for j in values]
+    or_like_condition = reduce(lambda x, y: x | y, lower_values)
+    return or_like_condition
+
+
 def show_visa_types(df, ax):
     res_df = (
         df.groupBy(F.col("CLASS_OF_ADMISSION"))
@@ -48,23 +54,18 @@ def show_visa_types(df, ax):
     ax.legend(labels[:15], bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0)
 
 
-def show_employers_cnt_per_city(df: DataFrame, ax):
+def show_employers_cnt_per_city(df: DataFrame, job_titles, skills, ax):
     transformed_df = (
         df.filter(df.CASE_STATUS == 'Certified')
+            .filter(df.CLASS_OF_ADMISSION == 'H-1B')
+            .withColumn('lower_job_title', F.lower(df.JOB_TITLE))
+            .withColumn('lower_pw_soc_title', F.lower(df.PW_SOC_TITLE))
+            .withColumn('lower_alt_job_title', F.lower(df.ACCEPT_ALT_JOB_TITLE))
             .filter(
-                (F.lower(df.JOB_TITLE).like('%software engineer%')
-                 | F.lower(df.JOB_TITLE).like('%data engineer%')
-                 | F.lower(df.JOB_TITLE).like('%software developer%'))
-                |
-                (F.lower(df.SPECIFIC_SKILLS).like('%spark%'))
-                |
-                (F.lower(df.PW_SOC_TITLE).like('%data%')
-                 | F.lower(df.PW_SOC_TITLE).like('%software developer%')
-                 | F.lower(df.PW_SOC_TITLE).like('%software engineer%'))
-                |
-                (F.lower(df.ACCEPT_ALT_JOB_TITLE).like('%data%')
-                 | F.lower(df.ACCEPT_ALT_JOB_TITLE).like('%software developer%')
-                 | F.lower(df.ACCEPT_ALT_JOB_TITLE).like('%software engineer%'))
+                contains_any(F.col('lower_job_title'), job_titles)
+                | contains_any(F.col('lower_pw_soc_title'), job_titles)
+                | contains_any(F.col('lower_alt_job_title'), job_titles)
+                | contains_any(F.col('SPECIFIC_SKILLS'), skills)
             )
     )
     companies_per_city_df = (
@@ -93,15 +94,14 @@ def show_employers_cnt_per_city(df: DataFrame, ax):
     ax.yaxis.set_tick_params(pad=10)
 
     # Add x, y gridlines
-    ax.grid(b=True, color='grey',
-            linestyle='-.', linewidth=0.5,
-            alpha=0.2)
+    ax.grid(b=True, color='grey', linestyle='-.', linewidth=0.5, alpha=0.2)
 
     # Add annotation to bars
     for i in ax.patches:
         ax.text(i.get_width() + 0.2, i.get_y() + 0.5,
-                 str(round((i.get_width()), 2)),
-                 fontsize=10, fontweight='bold', color='grey')
+            str(round((i.get_width()), 2)),
+            fontsize=10, fontweight='bold', color='grey'
+        )
 
     ax.set_xlabel('No. of employers')
     ax.set_ylabel('Cities')
@@ -110,10 +110,6 @@ def show_employers_cnt_per_city(df: DataFrame, ax):
 
 def show_software_companies_with_max_cases_cnt_and_wage(df: DataFrame, job_titles, skills, state, cities, ax_cases,
                                                         ax_wage):
-    def contains_any(c: Column, values: List[str]):
-        lower_values = [c.like(f'%{j.lower()}%') for j in values]
-        or_like_condition = reduce(lambda x, y: x | y, lower_values)
-        return or_like_condition
 
     lower_cities = [c.lower() for c in cities]
     tdf = (
@@ -192,12 +188,15 @@ def main():
 
     job_titles = ['Software Engineer', 'Data Engineer', 'Software Developer', 'Data']
     state = 'California'
-    cities = ['los angeles', 'irvine', 'orange county', 'pasadena', 'el segundo', 'santa monica',
-        'culver city', 'glendale', 'woodland hills', 'newport beach']
+    cities = [
+        'los angeles', 'irvine', 'orange county', 'pasadena', 'el segundo', 'santa monica', 'culver city', 'glendale',
+        'woodland hills', 'newport beach'
+    ]
     skills = ['Spark']
+
     show_software_companies_with_max_cases_cnt_and_wage(df, job_titles, skills, state, cities, axis[1, 0], axis[1, 1])
     show_visa_types(df, axis[0, 0])
-    show_employers_cnt_per_city(df, axis[0, 1])
+    show_employers_cnt_per_city(df, job_titles, skills, axis[0, 1])
 
     plt.subplots_adjust(left=0.17, right=0.97, top=0.9, bottom=0.06, hspace=0.56, wspace=0.53)
     plt.show()
