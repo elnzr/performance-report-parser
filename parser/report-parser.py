@@ -1,8 +1,12 @@
 import os
+from functools import reduce
+
 import pandas as pd
-from pyspark.sql import SparkSession, DataFrame
+from pyspark.sql import SparkSession, DataFrame, Column
 import pyspark.sql.functions as F
 import matplotlib.pyplot as plt
+import seaborn as sns
+from typing import List
 
 
 # SET PYSPARK_PYTHON env to <your-path>\performance-report-parser\venv\Scripts\python.exe
@@ -27,13 +31,6 @@ def parse_report(spark, csv_report_path) -> DataFrame:
 
 
 def show_visa_types(df, ax):
-    # df.filter(F.col("CLASS_OF_ADMISSION").startswith('EB'))
-
-    # df.filter(F.col("CLASS_OF_ADMISSION") != 'H-1B')
-    #    .filter(F.col("CLASS_OF_ADMISSION") != "F-1")
-    #    .filter(F.col("CLASS_OF_ADMISSION") != "Not in USA")
-    #    .filter(F.col("CLASS_OF_ADMISSION") != "L-1")
-
     res_df = (
         df.groupBy(F.col("CLASS_OF_ADMISSION"))
           .agg(F.countDistinct(F.col("CASE_NUMBER")))
@@ -46,7 +43,7 @@ def show_visa_types(df, ax):
     labels = res_pd['CLASS_OF_ADMISSION']
     sizes = res_pd['count(CASE_NUMBER)']
 
-    ax.pie(sizes, labels=labels)
+    ax.pie(sizes, labels=labels, colors=sns.color_palette("light:lawngreen"))
     ax.set_title('Rows count per visa type')
     ax.legend(labels[:15], bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0)
 
@@ -111,47 +108,34 @@ def show_employers_cnt_per_city(df: DataFrame, ax):
     ax.title.set_text("Top 15 cities with the greatest employers count")
 
 
-def show_software_companies_with_max_cases_cnt_and_wage(df: DataFrame, ax_cases, ax_wage):
-    # (
-    #     df.filter(F.col('COUNTRY_OF_CITIZENSHIP').startswith("RUSSIA"))
-    #         .filter(df.JOB_TITLE.like('Data Engineer'))
-    #         .limit(10)
-    #         .show(truncate=False)
-    #  )
+def show_software_companies_with_max_cases_cnt_and_wage(df: DataFrame, job_titles, skills, state, cities, ax_cases,
+                                                        ax_wage):
+    def contains_any(c: Column, values: List[str]):
+        lower_values = [c.like(f'%{j.lower()}%') for j in values]
+        or_like_condition = reduce(lambda x, y: x | y, lower_values)
+        return or_like_condition
 
-    # (
-    #     df.groupBy(df.CASE_STATUS)
-    #         .agg(F.countDistinct(df.CASE_NUMBER))
-    #         .show(truncate=False)
-    # )
-
-    res_df = (
+    lower_cities = [c.lower() for c in cities]
+    tdf = (
         df.filter(df.CASE_STATUS == 'Certified')
-           .filter(
-                (F.lower(df.JOB_TITLE).like('%software engineer%')
-                    | F.lower(df.JOB_TITLE).like('%data engineer%')
-                    | F.lower(df.JOB_TITLE).like('%software developer%'))
-                |
-                (F.lower(df.SPECIFIC_SKILLS).like('%spark%'))
-                |
-                (F.lower(df.PW_SOC_TITLE).like('%data%')
-                    | F.lower(df.PW_SOC_TITLE).like('%software developer%')
-                    | F.lower(df.PW_SOC_TITLE).like('%software engineer%'))
-                |
-                (F.lower(df.ACCEPT_ALT_JOB_TITLE).like('%data%')
-                    | F.lower(df.ACCEPT_ALT_JOB_TITLE).like('%software developer%')
-                    | F.lower(df.ACCEPT_ALT_JOB_TITLE).like('%software engineer%'))
-           )
-           .filter(df.WORKSITE_STATE == 'CALIFORNIA')
-           .filter(
-               F.lower(df.WORKSITE_CITY).isin(
-                   'los angeles', 'irvine', 'orange county', 'pasadena', 'el segundo', 'santa monica',
-                   'culver city', 'glendale', 'woodland hills', 'newport beach'
-               )
-           )
+            .filter(df.CLASS_OF_ADMISSION == 'H-1B')
+            .withColumn('lower_job_title', F.lower(df.JOB_TITLE))
+            .withColumn('lower_pw_soc_title', F.lower(df.PW_SOC_TITLE))
+            .withColumn('lower_alt_job_title', F.lower(df.ACCEPT_ALT_JOB_TITLE))
+    )
+    res_df = (
+        tdf.filter(
+            contains_any(tdf.lower_job_title, job_titles)
+                | contains_any(tdf.lower_pw_soc_title, job_titles)
+                | contains_any(tdf.lower_alt_job_title, job_titles)
+                | contains_any(tdf.SPECIFIC_SKILLS, skills)
+            )
+            .filter(F.upper(tdf.WORKSITE_STATE) == state.upper())
+            .filter(F.lower(tdf.WORKSITE_CITY).isin(*lower_cities))
     )
     print(f"Found {res_df.count()} cases")
     res_df.show(truncate=False)
+
     companies_ordered_df = (
         res_df.groupBy('EMPLOYER_NAME')
             .agg(F.count(F.col('CASE_NUMBER')).alias('cases_cnt'), F.max(F.col('PW_WAGE')).alias('max_wage'))
@@ -160,13 +144,14 @@ def show_software_companies_with_max_cases_cnt_and_wage(df: DataFrame, ax_cases,
     print(f"Found {companies_ordered_df.count()} employers")
     companies_ordered_df.limit(50).show(50, truncate=False)
 
-    companies_df = companies_ordered_df.limit(15)
+    companies_df = companies_ordered_df.limit(20)
 
     pd_df = companies_df.toPandas()
+    pd_df = pd_df.iloc[::-1]
     pd_df['max_wage'] = pd_df['max_wage'].astype(float)
 
-    pd_df[["EMPLOYER_NAME", "cases_cnt"]].plot(x="EMPLOYER_NAME", kind="barh", ax=ax_cases, fontsize=6)
-    pd_df[["EMPLOYER_NAME", "max_wage"]].plot(x="EMPLOYER_NAME", kind="barh", ax=ax_wage, fontsize=6)
+    pd_df[["EMPLOYER_NAME", "cases_cnt"]].plot(x="EMPLOYER_NAME", kind="barh", ax=ax_cases, fontsize=6, color='lawngreen')
+    pd_df[["EMPLOYER_NAME", "max_wage"]].plot(x="EMPLOYER_NAME", kind="barh", ax=ax_wage, fontsize=6, color='lawngreen')
 
     ax_cases.set_xlabel('Cases count')
     ax_cases.set_ylabel('Company')
@@ -182,7 +167,7 @@ def show_software_companies_with_max_cases_cnt_and_wage(df: DataFrame, ax_cases,
 def init_spark_session():
     spark = SparkSession \
         .builder \
-        .appName("Python Spark SQL basic example") \
+        .appName("Basic example") \
         .getOrCreate()
 
     return spark
@@ -204,7 +189,13 @@ def main():
     df = parse_report(spark, csv_report_name)
 
     fig, axis = plt.subplots(2, 2)
-    show_software_companies_with_max_cases_cnt_and_wage(df, axis[1, 0], axis[1, 1])
+
+    job_titles = ['Software Engineer', 'Data Engineer', 'Software Developer', 'Data']
+    state = 'California'
+    cities = ['los angeles', 'irvine', 'orange county', 'pasadena', 'el segundo', 'santa monica',
+        'culver city', 'glendale', 'woodland hills', 'newport beach']
+    skills = ['Spark']
+    show_software_companies_with_max_cases_cnt_and_wage(df, job_titles, skills, state, cities, axis[1, 0], axis[1, 1])
     show_visa_types(df, axis[0, 0])
     show_employers_cnt_per_city(df, axis[0, 1])
 
